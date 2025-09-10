@@ -25,7 +25,9 @@ for y in range(years):
 
                 continue
             print(json_response["Valute"]["USD"])
-            result.append([json_response["Date"],json_response["Valute"]["USD"]["Value"]])
+            result.append([str(json_response["Date"]).split("T")[0],json_response["Valute"]["USD"]["Value"]])
 
 df = pd.DataFrame(result, columns = ["date", "value"])
-print(df)
+
+filename = 'dataset.csv'
+df.to_csv(filename,index=False)

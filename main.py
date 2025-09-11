@@ -8,13 +8,13 @@ url = 'https://www.cbr-xml-daily.ru/archive/'
 
 id = 0
 days = 32
-months = 2
-years = 1
+months = 13
+years = 31
 result=[]
 for y in range(years):
-    for m in range(months):
-        for d in range(days):
-            cur_date = f"20{str(25-y)}/{m if m>9 else "0"+str(m+1)}/{d if d>9 else "0"+str(d+1)}"
+    for m in range(1,months):
+        for d in range(1,days):
+            cur_date = f"{1995+y}/{m if m>9 else "0"+str(m)}/{d if d>9 else "0"+str(d)}"
             cur_url = url +cur_date +"/daily_json.js"
 
             print("Скрапинг страницы: ", cur_url)

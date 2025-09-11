@@ -1,12 +1,7 @@
-import os
 import pandas as pd
 import requests
 
-
 url = 'https://www.cbr-xml-daily.ru/archive/'
-
-
-id = 0
 days = 32
 months = 13
 years = 31

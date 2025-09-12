@@ -1,16 +1,21 @@
 import pandas as pd
 import requests
+from datetime import datetime
 
 url = 'https://www.cbr-xml-daily.ru/archive/'
 val ='CAD'
-days = 32
-months = 13
-years = 2
+foryear = 2025
+
+fromday = 1
+frommonth = 1
+years = 1
 result=[]
 for y in range(years):
-    for m in range(1,months):
-        for d in range(1,days):
-            cur_date = f"{2024+y}/{m if m>9 else "0"+str(m)}/{d if d>9 else "0"+str(d)}"
+    for m in range(frommonth,13):
+        for d in range(fromday,32):
+            cur_date = f"{foryear+y}/{m if m>9 else "0"+str(m)}/{d if d>9 else "0"+str(d)}"
+            if cur_date > datetime.now().date().strftime("%Y/%m/%d"):
+                break
             cur_url = url +cur_date +"/daily_json.js"
 
             print("Скрапинг страницы: ", cur_url)

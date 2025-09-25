@@ -1,10 +1,10 @@
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 import os
 import glob
-import builtins
+
 
 class SourceType(Enum):
     ALL=0,
@@ -83,14 +83,14 @@ def split_csv_by_weeks(input_file='dataset.csv', output_dir='weekly_data'):
 class DataReader:
     """Класс для чтения данных по дате из разных источников"""
     
-    def __init__(self, source_type=0, source_path=None):
+    def __init__(self, source_type=SourceType.ALL, source_path=None):
         self.source_type = source_type
         self.source_path = source_path or self._get_default_source()
         self.data = self._load_data()
     
     def _get_default_source(self):
         sources = ['dataset.csv', 'yearly_data', 'weekly_data', '.']
-        return sources[self.source_type]
+        return sources[self.source_type.value[0]]
     
     def _load_data(self):
         if self.source_type == SourceType.ALL:
@@ -170,21 +170,6 @@ class DataIterator:
         
         return (date, value)
 
-_iterators = {}
-
-def next_function(source_type=0, source_path=None):
-    """Функция next() для последовательного чтения данных"""
-    key = (source_type, source_path or DataReader(source_type)._get_default_source())
-    
-    if key not in _iterators:
-        _iterators[key] = DataIterator(source_type, source_path)
-    
-    try:
-        return builtins.next(_iterators[key])
-    except StopIteration:
-        del _iterators[key]
-        raise
-
 if __name__ == '__main__':
 
     #Лабораторная работа №1
@@ -206,20 +191,8 @@ if __name__ == '__main__':
         print(f"{date.strftime('%Y-%m-%d')}: {value}")
         if i >= 4:
             break
-    
-    print("\Тест next():")
-    try:
-        key = (SourceType.ALL, 'dataset.csv')
-        if key in _iterators:
-            del _iterators[key]
-            
-        print(next_function(SourceType.ALL, 'dataset.csv'))
-        print(next_function(SourceType.ALL, 'dataset.csv'))
-        print(next_function(SourceType.ALL, 'dataset.csv'))
-    except StopIteration:
-        print("Данные закончились")
-    
+
     print("\Поиска по дате:")
-    test_date = datetime(2023, 1, 2)
+    test_date = datetime(2025, 9, 2)
     result = get_data_by_date(test_date)
     print(f"Данные за {test_date.strftime('%Y-%m-%d')}: {result}")

@@ -174,7 +174,7 @@ class DataIterator:
         
         return (date, value)
     
-    def prev(self):
+    def __prev__(self):
         """Метод для получения предыдущего элемента"""
         if self.current_index <= 0:
             raise StopIteration("Достигнут начало данных")

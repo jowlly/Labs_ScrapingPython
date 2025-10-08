@@ -127,17 +127,21 @@ class DataReader:
         else:
             return float(result.iloc[0]['value'])
 
-def get_data_by_date(date):
-    reader = DataReader(SourceType.ALL)
+
+def get_data_by_date(date, source_type=SourceType.ALL, source_path=None):
+    reader = DataReader(source_type, source_path)
     return reader.get_data_by_date(date)
 
-def get_data_by_date_weekly(date):
-    reader = DataReader(SourceType.WEEKS)
+
+def get_data_by_date_weekly(date, source_path=None):
+    reader = DataReader(SourceType.WEEKS, source_path)
     return reader.get_data_by_date(date)
 
-def get_data_by_date_yearly(date):
-    reader = DataReader(SourceType.YEARS)
+
+def get_data_by_date_yearly(date, source_path=None):
+    reader = DataReader(SourceType.YEARS, source_path)
     return reader.get_data_by_date(date)
+
 
 def get_data_by_date_splitted(date):
     reader = DataReader(SourceType.SPLITTED)
@@ -169,6 +173,64 @@ class DataIterator:
         value = float(row['value']) if 'value' in row else float(row[1])
         
         return (date, value)
+
+
+def create_dataset_annotation(dataset_path, output_file):
+    """Создает файл аннотации для исходного датасета"""
+    df = pd.read_csv(os.path.join(dataset_path, 'dataset.csv'))
+    annotation_data = []
+    
+    for index, row in df.iterrows():
+        annotation_data.append({
+            'date': row['date'],
+            'value': row['value'],
+            'file_path': os.path.join(dataset_path, 'dataset.csv')
+        })
+    
+    annotation_df = pd.DataFrame(annotation_data)
+    annotation_df.to_csv(output_file, index=False)
+    return annotation_df
+
+
+def create_reorganized_dataset(source_dataset_path, output_dir, reorganization_type='years'):
+    """Создает реорганизованный датасет и файл аннотации"""
+    os.makedirs(output_dir, exist_ok=True)
+    source_file = os.path.join(source_dataset_path, 'dataset.csv')
+    
+    if reorganization_type == 'years':
+        split_csv_by_years(source_file, output_dir)
+    elif reorganization_type == 'weeks':
+        split_csv_by_weeks(source_file, output_dir)
+    
+    annotation_data = []
+    
+    if reorganization_type == 'years':
+        files = glob.glob(os.path.join(output_dir, "*.csv"))
+        for file in files:
+            df = pd.read_csv(file)
+            for index, row in df.iterrows():
+                annotation_data.append({
+                    'date': row['date'],
+                    'value': row['value'],
+                    'file_path': file
+                })
+    
+    elif reorganization_type == 'weeks':
+        files = glob.glob(os.path.join(output_dir, "*.csv"))
+        for file in files:
+            df = pd.read_csv(file)
+            for index, row in df.iterrows():
+                annotation_data.append({
+                    'date': row['date'],
+                    'value': row['value'],
+                    'file_path': file
+                })
+    
+    annotation_df = pd.DataFrame(annotation_data)
+    annotation_file = os.path.join(output_dir, 'annotation.csv')
+    annotation_df.to_csv(annotation_file, index=False)
+    
+    return annotation_df
 
 if __name__ == '__main__':
 

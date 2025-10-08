@@ -173,6 +173,19 @@ class DataIterator:
         value = float(row['value']) if 'value' in row else float(row[1])
         
         return (date, value)
+    
+    def prev(self):
+        """Метод для получения предыдущего элемента"""
+        if self.current_index <= 0:
+            raise StopIteration("Достигнут начало данных")
+        
+        self.current_index -= 1
+        row = self.sorted_data.iloc[self.current_index]
+        
+        date = datetime.strptime(row['date'], '%Y-%m-%d')
+        value = float(row['value']) if 'value' in row else float(row[1])
+        
+        return (date, value)
 
 
 def create_dataset_annotation(dataset_path, output_file):

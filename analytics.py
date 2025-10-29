@@ -14,6 +14,7 @@ def filter_by_date(dataframe, start_date, end_date):
     return dataframe.loc[mask]
 
 def plot_month_data(dataframe, month):
+<<<<<<< Updated upstream
     """Построение изменения курса за месяц"""
     monthly_data = dataframe[dataframe['date'].dt.to_period('M') == month]
     if monthly_data.empty:
@@ -23,6 +24,39 @@ def plot_month_data(dataframe, month):
     median_val = monthly_data['value'].median()
     mean_val = monthly_data['value'].mean()
     
+=======
+    """Построение изменения курса за месяц (для обратной совместимости)"""
+    analytics = CurrencyAnalytics()
+    analytics.processed_df = dataframe
+    success, result = analytics.plot_month_data(month)
+    if success:
+        fig = plt.figure()
+        return fig
+    else:
+        return None
+
+if __name__ == "__main__":
+    #1
+    df = pd.read_csv('dataset.csv')
+    df = filter_by_date(df, '2015-01-01', '2025-10-05')
+    df.columns = ['date', 'value']
+
+    #3
+    print("Пропуски в данных:")
+    print(df.isnull().sum())
+    df['value'] = df['value'].fillna(df['value'].mean())
+
+    #4
+    median_value = df['value'].median()
+    mean_value = df['value'].mean()
+    df['deviation_median'] = df['value'] - median_value
+    df['deviation_mean'] = df['value'] - mean_value
+
+    #5
+    print("\nСтатистика по числовым колонкам:")
+    print(df[['value', 'deviation_median', 'deviation_mean']].describe())
+
+>>>>>>> Stashed changes
     plt.figure(figsize=(12, 6))
     plt.plot(monthly_data['date'], monthly_data['value'], label='Курс')
     plt.axhline(median_val, color='red', linestyle='--', label=f'Медиана: {median_val:.2f}')
@@ -34,6 +68,7 @@ def plot_month_data(dataframe, month):
     plt.grid(True)
     plt.show()
 
+<<<<<<< Updated upstream
 #1
 #В 1999 резкое изменение, поэтому берём с 2000
 df = pd.read_csv('dataset.csv')
@@ -82,3 +117,13 @@ filtered_date = filter_by_date(df, '1995-01-01', '1995-01-31')
 print(f"Отфильтровано по дате: {len(filtered_date)} записей")
 #10
 plot_month_data(df, '2025-01')
+=======
+    #6
+    filtered_dev = filter_by_deviation(df, 100)
+    print(f"\nОтфильтровано по отклонению ≥ 100: {len(filtered_dev)} записей")
+    #7
+    filtered_date = filter_by_date(df, '2015-01-01', '2025-10-05')
+    print(f"Отфильтровано по дате: {len(filtered_date)} записей")
+    #10
+    plot_month_data(df, '2025-01')
+>>>>>>> Stashed changes

@@ -34,10 +34,14 @@ def plot_month_data(dataframe, month):
     plt.grid(True)
     plt.show()
 
+ 
+startdate = '2000-01-01'
+enddate = '2025-10-05'
+dev = 50
 #1
 #В 1999 резкое изменение, поэтому берём с 2000
 df = pd.read_csv('dataset.csv')
-df = filter_by_date(df, '2000-01-01', '2025-10-05')
+df = filter_by_date(df, startdate, enddate)
 df.columns = ['date', 'value']
 
 #3
@@ -75,10 +79,10 @@ plt.grid(True)
 plt.show()
 
 #6
-filtered_dev = filter_by_deviation(df, 100)
-print(f"\nОтфильтровано по отклонению ≥ 100: {len(filtered_dev)} записей")
+filtered_dev = filter_by_deviation(df, dev)
+print(f"\nОтфильтровано по отклонению ≥ {dev}: {len(filtered_dev)} записей")
 #7
-filtered_date = filter_by_date(df, '1995-01-01', '1995-01-31')
+filtered_date = filter_by_date(df, startdate, enddate)
 print(f"Отфильтровано по дате: {len(filtered_date)} записей")
 #10
 plot_month_data(df, '2025-01')

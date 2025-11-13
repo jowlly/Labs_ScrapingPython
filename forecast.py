@@ -108,7 +108,6 @@ class TimeSeriesForecaster:
     
     def _create_regression_features(self, window_size=10):
         """Создание признаков для регрессионной модели"""
-        
         df = self.data.copy()
         
         for i in range(1, window_size + 1):
@@ -126,7 +125,9 @@ class TimeSeriesForecaster:
         
         df = df.dropna()
         
-        self.X = df.drop('value', axis=1)
+        self.feature_columns = [col for col in df.columns if col != 'value']
+        
+        self.X = df[self.feature_columns]
         self.y = df['value']
         
         split_index = int(len(df) * 0.8)
@@ -191,6 +192,14 @@ class TimeSeriesForecaster:
             
             model.fit(self.X_train_scaled, self.y_train)
             
+            if hasattr(model, 'feature_names_in_'):
+                pass
+            else:
+                try:
+                    model.feature_names_ = self.feature_columns
+                except:
+                    pass 
+            
             y_pred = model.predict(self.X_test_scaled)
             
             mae = mean_absolute_error(self.y_test, y_pred)
@@ -210,6 +219,10 @@ class TimeSeriesForecaster:
                 },
                 'predictions': y_pred
             }
+            
+            validation_success, validation_message = self.validate_feature_names()
+            if not validation_success:
+                print(f"Предупреждение: {validation_message}")
             
             return True, f"{model_type} модель обучена. RMSE: {rmse:.2f}, R2: {r2:.2f}"
             
@@ -366,10 +379,13 @@ class TimeSeriesForecaster:
     def _regression_forecast(self, steps):
         """Улучшенный прогноз для регрессионных моделей"""
         try:
-            current_data = self.X.iloc[-1:].copy()
+            if hasattr(self, 'feature_columns'):
+                current_data = self.X.iloc[-1:][self.feature_columns].copy()
+            else:
+                current_data = self.X.iloc[-1:].copy()
+                
             predictions = []
             all_predictions_data = []
-            
             last_date = self.data.index[-1]
             date_range = pd.date_range(
                 start=last_date + pd.Timedelta(days=1), 
@@ -378,11 +394,20 @@ class TimeSeriesForecaster:
             )
             
             for i in range(steps):
-                current_scaled = self.scaler.transform(current_data)
+                current_data_ensure = current_data[self.feature_columns]
+                
+                current_scaled = self.scaler.transform(current_data_ensure)
+                
                 pred = self.regression_model.predict(current_scaled)[0]
                 predictions.append(pred)
+                
                 new_row = self._create_next_features(current_data, pred, i + 1, steps)
+                
+                if hasattr(self, 'feature_columns'):
+                    new_row = new_row[self.feature_columns]
+                    
                 current_data = new_row
+                
                 all_predictions_data.append({
                     'step': i + 1,
                     'prediction': pred,
@@ -449,6 +474,9 @@ class TimeSeriesForecaster:
             
             self._update_time_features(new_data, step, total_steps)
             
+            if hasattr(self, 'feature_columns'):
+                new_data = new_data[self.feature_columns]
+            
             return new_data
             
         except Exception as e:
@@ -481,18 +509,14 @@ class TimeSeriesForecaster:
             last_date = self.data.index[-1]
             forecast_date = last_date + pd.Timedelta(days=step)
             
-            new_data['day_of_week'] = forecast_date.dayofweek
-            new_data['month'] = forecast_date.month
-            new_data['quarter'] = forecast_date.quarter
-            new_data['year'] = forecast_date.year
-            
-            new_data['day_of_year'] = forecast_date.dayofyear
-            new_data['week_of_year'] = forecast_date.weekofyear
-            new_data['is_weekend'] = 1 if forecast_date.dayofweek >= 5 else 0
-            
-            new_data['sin_month'] = np.sin(2 * np.pi * forecast_date.month / 12)
-            new_data['cos_month'] = np.cos(2 * np.pi * forecast_date.month / 12)
-            
+            if 'day_of_week' in new_data.columns:
+                new_data['day_of_week'] = forecast_date.dayofweek
+            if 'month' in new_data.columns:
+                new_data['month'] = forecast_date.month
+            if 'quarter' in new_data.columns:
+                new_data['quarter'] = forecast_date.quarter
+            if 'year' in new_data.columns:
+                new_data['year'] = forecast_date.year
         except Exception as e:
             print(f"Ошибка обновления временных признаков: {str(e)}")
 
@@ -580,3 +604,25 @@ class TimeSeriesForecaster:
             
         except Exception as e:
             return f"Ошибка расчета метрик: {str(e)}"
+        
+    def validate_feature_names(self):
+        """Проверка соответствия имен признаков"""
+        if not hasattr(self, 'feature_columns'):
+            return False, "Признаки не определены"
+        
+        if not hasattr(self, 'regression_model'):
+            return False, "Модель не обучена"
+        
+        try:
+            if hasattr(self.regression_model, 'feature_names_in_'):
+                model_features = list(self.regression_model.feature_names_in_)
+            else:
+                model_features = self.feature_columns
+            
+            if set(model_features) != set(self.feature_columns):
+                return False, f"Несоответствие признаков. Модель: {model_features}, Данные: {self.feature_columns}"
+            
+            return True, "Признаки соответствуют"
+            
+        except Exception as e:
+            return False, f"Ошибка проверки признаков: {str(e)}"

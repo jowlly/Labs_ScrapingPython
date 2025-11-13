@@ -599,7 +599,6 @@ class MainWindow:
         self.forecast_result_text.value = message
         
         if success:
-            # Логируем результаты
             self._log_results("SARIMA", self.forecaster.results['sarima'])
         
         self.page.update()
@@ -665,11 +664,7 @@ class MainWindow:
     
     def save_best_model(self, e):
         try:
-            import tempfile
-            temp_dir = tempfile.gettempdir()
-            model_path = os.path.join(temp_dir, "best_model.pkl")
-            
-            success, message = self.forecaster.save_best_model(model_path)
+            success, message = self.forecaster.save_best_model("best_model.pkl")
             self.forecast_result_text.value = message
         except Exception as ex:
             self.forecast_result_text.value = f"Ошибка сохранения: {str(ex)}"

@@ -8,7 +8,6 @@ from data import create_dataset_annotation, create_reorganized_dataset, get_data
 from analytics import CurrencyAnalytics
 from forecast import TimeSeriesForecaster 
 
-
 class MainWindow:
     def __init__(self, page: ft.Page):
         self.page = page
@@ -50,7 +49,6 @@ class MainWindow:
             self.pick_forecast_file_dialog, 
             self.pick_model_file_dialog
         ])
-        
         self._create_forecast_tab()
         
         self.page.overlay.extend([self.pick_source_folder_dialog, 
@@ -93,6 +91,11 @@ class MainWindow:
         self.get_data_btn = ft.ElevatedButton(
             "Получить данные",
             on_click=self.get_data_by_date
+        )
+        
+        self.analyze_moving_window_btn = ft.ElevatedButton(
+            "Анализ скользящим окном (12 шагов)",
+            on_click=self.analyze_moving_window
         )
         
         self.analytics_file_path = ft.TextField(label="Файл данных (dataset.csv)", read_only=True, expand=True)
@@ -171,7 +174,7 @@ class MainWindow:
                     ft.Row([self.threshold_input, self.filter_deviation_btn]),
                     ft.Row([self.filter_date_btn]),
                     ft.Row([self.month_input, self.plot_month_btn]),
-                    ft.Row([self.plot_full_btn, self.show_stats_btn, self.show_boxplot_btn]),
+                    ft.Row([self.plot_full_btn, self.show_stats_btn, self.show_boxplot_btn, self.analyze_moving_window_btn]),
                     self.analytics_result_text,
                     self.analytics_image
                 ], scroll="adaptive"),
@@ -394,22 +397,48 @@ class MainWindow:
             self.analytics_result_text.value = f"Ошибка при построении boxplot: {str(ex)}"
         
         self.page.update()
+    def analyze_moving_window(self, e):
+        """Анализ методом скользящего окна"""
+        try:
+            success, result = self.analytics.analyze_moving_window(12)
+            
+            if success:
+                self.analytics_image.src_base64 = result['plot']
+                
+                analysis_report = "АНАЛИЗ СКОЛЬЗЯЩИМ ОКНОМ (12 шагов):\n\n"
+                analysis_report += f"Размер окна: {result['analysis']['window_size']}\n"
+                analysis_report += f"Всего окон: {result['analysis']['total_windows']}\n"
+                analysis_report += f"Среднее скользящее среднее: {result['analysis']['avg_moving_mean']:.2f}\n"
+                analysis_report += f"Среднее скользящее отклонение: {result['analysis']['avg_moving_std']:.2f}\n"
+                analysis_report += f"Максимальное отклонение: {result['analysis']['max_deviation']:.2f}\n\n"
+                
+                if isinstance(result['analysis']['autocorrelation'], dict):
+                    analysis_report += result['analysis']['autocorrelation']['analysis_summary']
+                else:
+                    analysis_report += f"Анализ автокорреляции: {result['analysis']['autocorrelation']}"
+                
+                self.analytics_result_text.value = analysis_report
+            else:
+                self.analytics_result_text.value = result
+            
+        except Exception as ex:
+            self.analytics_result_text.value = f"Ошибка при анализе скользящим окном: {str(ex)}"
         
+        self.page.update()    
     def _create_forecast_tab(self):
-        """Создание вкладки прогнозирования"""
         self.forecast_file_path = ft.TextField(
             label="Файл данных для прогнозирования", 
             read_only=True, 
             expand=True
         )
-    
-        self.sarima_p = ft.TextField(label="p", value="1")
-        self.sarima_d = ft.TextField(label="d", value="1")
-        self.sarima_q = ft.TextField(label="q", value="1")
-        self.seasonal_p = ft.TextField(label="P", value="1")
-        self.seasonal_d = ft.TextField(label="D", value="1")
-        self.seasonal_q = ft.TextField(label="Q", value="1")
-        self.seasonal_s = ft.TextField(label="s", value="12")
+
+        self.sarima_p = ft.TextField(label="p", value="1", width=80)
+        self.sarima_d = ft.TextField(label="d", value="1", width=80)
+        self.sarima_q = ft.TextField(label="q", value="1", width=80)
+        self.seasonal_p = ft.TextField(label="P", value="1", width=80)
+        self.seasonal_d = ft.TextField(label="D", value="1", width=80)
+        self.seasonal_q = ft.TextField(label="Q", value="1", width=80)
+        self.seasonal_s = ft.TextField(label="s", value="12", width=80)
         
         self.regression_model_type = ft.Dropdown(
             label="Регрессионная модель",
@@ -419,12 +448,15 @@ class MainWindow:
                 ft.dropdown.Option("catboost", "CatBoost"),
                 ft.dropdown.Option("linear", "Linear Regression")
             ],
-            value="random_forest"
+            value="random_forest",
+            width=200
         )
         
         self.hyperparam_sets = ft.TextField(
             label="Наборы гиперпараметров (JSON)",
             multiline=True,
+            min_lines=3,
+            max_lines=5,
             value=json.dumps([
                 {"n_estimators": 100, "max_depth": 10},
                 {"n_estimators": 200, "max_depth": 15},
@@ -492,6 +524,26 @@ class MainWindow:
             on_click=self.make_prediction
         )
         
+        # Контейнер с прокруткой для параметров SARIMA
+        sarima_params_container = ft.Container(
+            content=ft.Column([
+                ft.Text("SARIMA Параметры:", weight=ft.FontWeight.BOLD, size=16),
+                ft.Row([
+                    self.sarima_p, self.sarima_d, self.sarima_q,
+                    self.seasonal_p, self.seasonal_d, self.seasonal_q, self.seasonal_s
+                ], wrap=True, spacing=10, run_spacing=10),
+                ft.Text(
+                    "p,d,q - несезонные параметры\nP,D,Q,s - сезонные параметры (s=12 для месячных данных)",
+                    size=12,
+                    color=ft.Colors.GREY_600
+                )
+            ], spacing=10),
+            padding=15,
+            border=ft.border.all(1, ft.Colors.GREY_300),
+            border_radius=10,
+            bgcolor=ft.Colors.GREY_50
+        )
+        
         self.forecast_tab_content = ft.Container(
             content=ft.Column([
                 ft.Row([self.forecast_file_path, self.load_forecast_data_btn]),
@@ -501,25 +553,21 @@ class MainWindow:
                 ft.Row([
                     self.analyze_ts_btn,
                     self.prepare_data_btn
-                ]),
+                ], spacing=10),
                 
                 ft.Divider(),
                 
-                ft.Text("SARIMA Параметры:", weight=ft.FontWeight.BOLD),
-                ft.Row([
-                    self.sarima_p, self.sarima_d, self.sarima_q,
-                    self.seasonal_p, self.seasonal_d, self.seasonal_q, self.seasonal_s
-                ]),
+                sarima_params_container,
                 
                 ft.Row([
                     self.train_sarima_btn,
                     self.regression_model_type,
                     self.train_regression_btn
-                ]),
+                ], spacing=10),
                 
                 ft.Divider(),
                 
-                ft.Text("Настройка гиперпараметров:", weight=ft.FontWeight.BOLD),
+                ft.Text("Настройка гиперпараметров:", weight=ft.FontWeight.BOLD, size=16),
                 self.hyperparam_sets,
                 self.tune_hyperparams_btn,
                 
@@ -530,13 +578,13 @@ class MainWindow:
                     self.save_model_btn,
                     self.load_model_btn,
                     self.predict_btn
-                ]),
+                ], wrap=True, spacing=10, run_spacing=10),
                 
                 self.forecast_result_text,
                 self.model_comparison_text,
                 self.forecast_image
                 
-            ], scroll="adaptive"),
+            ], scroll=ft.ScrollMode.AUTO),  # Весь контент вкладки прокручивается
             padding=20
         )
     

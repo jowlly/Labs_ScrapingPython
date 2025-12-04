@@ -37,7 +37,116 @@ class TimeSeriesForecaster:
             return True, "Данные успешно загружены"
         except Exception as e:
             return False, f"Ошибка загрузки данных: {str(e)}"
-    
+        
+    def _detailed_autocorrelation_analysis(self, max_lag=24):
+        """Детальный анализ автокорреляции"""
+        try:
+            from statsmodels.tsa.stattools import acf, pacf
+            
+            data = self.data['value'].dropna()
+            
+            autocorr_values = acf(data, nlags=max_lag, fft=True)
+            partial_autocorr_values = pacf(data, nlags=max_lag)
+            
+            analysis = {
+                'significant_lags': [],
+                'seasonality_12': False,
+                'seasonality_6': False,
+                'trend_strength': 'слабый',
+                'white_noise_test': False,
+                'summary': ''
+            }
+            
+            significance_threshold = 1.96 / np.sqrt(len(data))
+            
+            for lag in range(1, max_lag + 1):
+                if abs(autocorr_values[lag]) > significance_threshold:
+                    analysis['significant_lags'].append({
+                        'lag': lag,
+                        'acf': autocorr_values[lag],
+                        'pacf': partial_autocorr_values[lag]
+                    })
+            
+            seasonal_lags = [item for item in analysis['significant_lags'] 
+                           if item['lag'] % 12 == 0 or item['lag'] == 12]
+            if seasonal_lags:
+                analysis['seasonality_12'] = True
+            
+            semi_seasonal_lags = [item for item in analysis['significant_lags'] 
+                                if item['lag'] % 6 == 0 or item['lag'] == 6]
+            if semi_seasonal_lags:
+                analysis['seasonality_6'] = True
+            
+            if autocorr_values[1] > 0.8:
+                analysis['trend_strength'] = 'очень сильный'
+            elif autocorr_values[1] > 0.6:
+                analysis['trend_strength'] = 'сильный'
+            elif autocorr_values[1] > 0.4:
+                analysis['trend_strength'] = 'умеренный'
+            elif autocorr_values[1] > 0.2:
+                analysis['trend_strength'] = 'слабый'
+            else:
+                analysis['trend_strength'] = 'очень слабый'
+        
+            if len(analysis['significant_lags']) == 0:
+                analysis['white_noise_test'] = True
+            
+            summary = "ВЫВОДЫ ДЛЯ SARIMA МОДЕЛИ:\n"
+            summary += "=" * 50 + "\n"
+            
+            if analysis['seasonality_12']:
+                summary += "✓ Обнаружена СИЛЬНАЯ СЕЗОННОСТЬ 12 месяцев\n"
+                summary += "  Рекомендации:\n"
+                summary += "  • Использовать s=12 в сезонных параметрах\n"
+                summary += "  • Рассмотреть P, D, Q ≠ 0\n"
+            elif analysis['seasonality_6']:
+                summary += "✓ Обнаружена СЛАБАЯ СЕЗОННОСТЬ 6 месяцев\n"
+                summary += "  Рекомендации:\n"
+                summary += "  • Использовать s=6 или s=12\n"
+                summary += "  • Рассмотреть P=1, D=0, Q=1\n"
+            else:
+                summary += "✗ Сезонность НЕ обнаружена\n"
+                summary += "  Рекомендации:\n"
+                summary += "  • Использовать ARIMA вместо SARIMA\n"
+                summary += "  • Или установить P=D=Q=0\n"
+            
+            summary += "=" * 50 + "\n"
+            
+            summary += "РЕКОМЕНДАЦИИ ПО ПАРАМЕТРАМ (p,d,q):\n"
+            
+            pacf_significant = [item for item in analysis['significant_lags'] 
+                              if abs(item['pacf']) > significance_threshold and item['lag'] <= 3]
+            if pacf_significant:
+                max_pacf_lag = max([item['lag'] for item in pacf_significant])
+                summary += f"• p ≈ {max_pacf_lag} (по PACF)\n"
+            else:
+                summary += "• p ≈ 0-2 (слабые автокорреляции)\n"
+            
+            if not analysis['is_stationary']:
+                summary += "• d = 1-2 (ряд нестационарный)\n"
+            else:
+                summary += "• d = 0-1 (ряд стационарный)\n"
+            
+            acf_significant = [item for item in analysis['significant_lags'] 
+                             if abs(item['acf']) > significance_threshold and item['lag'] <= 3]
+            if acf_significant:
+                max_acf_lag = max([item['lag'] for item in acf_significant])
+                summary += f"• q ≈ {max_acf_lag} (по ACF)\n"
+            else:
+                summary += "• q ≈ 0-1 (слабые частные автокорреляции)\n"
+            
+            summary += "=" * 50 + "\n"
+            summary += "ПРИМЕРЫ КОНФИГУРАЦИЙ:\n"
+            summary += "1. Без сезонности: (1,1,1)(0,0,0,0)\n"
+            summary += "2. С сезонностью: (1,1,1)(1,1,1,12)\n"
+            summary += "3. Слабые корреляции: (0,1,1)(0,1,1,12)\n"
+            
+            analysis['summary'] = summary
+            return analysis
+            
+        except Exception as e:
+            return {'summary': f"Ошибка анализа: {str(e)}"}
+        
     def analyze_time_series(self):
         """Анализ временного ряда"""
         if self.data is None:
@@ -61,7 +170,14 @@ class TimeSeriesForecaster:
             'min': self.data['value'].min(),
             'max': self.data['value'].max()
         }
+        analysis_results['autocorrelation_analysis'] = self._detailed_autocorrelation_analysis()
         
+        analysis_text = f"АНАЛИЗ АВТОКОРРЕЛЯЦИИ:\n"
+        analysis_text += f"1. Тест Дики-Фуллера: {'Стационарный' if analysis_results['is_stationary'] else 'Нестационарный'}\n"
+        analysis_text += f"2. P-value: {analysis_results['adf_pvalue']:.4f}\n\n"
+        analysis_text += analysis_results['autocorrelation_analysis']['summary']
+        
+        analysis_results['autocorrelation_summary'] = analysis_text
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         
         axes[0, 0].plot(self.data.index, self.data['value'])

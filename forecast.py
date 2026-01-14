@@ -14,6 +14,7 @@ from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 import joblib
 
 class TimeSeriesForecaster:
@@ -742,3 +743,194 @@ class TimeSeriesForecaster:
             
         except Exception as e:
             return False, f"Ошибка проверки признаков: {str(e)}"
+        
+        # Добавить новый метод в класс TimeSeriesForecaster
+    def create_sliding_window_features(self, window_size=12):
+        """Создание признаков для обучения с помощью sliding window"""
+        if self.data is None:
+            return False, "Данные не загружены"
+        
+        try:
+            df = self.data.copy()
+            values = df['value'].values
+            
+            # Создаем признаки с помощью sliding window
+            X, y = [], []
+            for i in range(window_size, len(values)):
+                X.append(values[i-window_size:i])
+                y.append(values[i])
+            
+            X = np.array(X)
+            y = np.array(y)
+            
+            # Разделяем на train/test
+            X_train, X_test,y_train, y_test = train_test_split(X,y,test_size=0.1,random_state=42,shuffle=False)
+            
+            self.sliding_window_data = {
+                'X_train': X_train,
+                'X_test': X_test,
+                'y_train': y_train,
+                'y_test': y_test,
+                'window_size': window_size,
+                
+            }
+            
+            return True, f"Sliding window данные подготовлены. Окно: {window_size}, Train: {len(X_train)}, Test: {len(X_test)}"
+        
+        except Exception as e:
+            return False, f"Ошибка создания sliding window признаков: {str(e)}"
+
+
+    def train_sliding_window_xgboost(self, n_estimators=100, max_depth=3, learning_rate=0.1):
+        """Обучение XGBoost на данных с sliding window"""
+        if not hasattr(self, 'sliding_window_data'):
+            return False, "Сначала создайте sliding window данные"
+        
+        try:
+            X_train = self.sliding_window_data['X_train']
+            X_test = self.sliding_window_data['X_test']
+            y_train = self.sliding_window_data['y_train']
+            y_test = self.sliding_window_data['y_test']
+            window_size = self.sliding_window_data['window_size']
+            
+            # Создаем и обучаем XGBoost модель
+            model = XGBRegressor(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                learning_rate=learning_rate,
+                random_state=42,
+                eval_metric='rmse'
+            )
+            
+            model.fit(X_train, y_train)
+            
+            # Прогноз на тестовых данных
+            y_pred = model.predict(X_test)
+            
+            # Вычисляем метрики
+            mae = mean_absolute_error(y_test, y_pred)
+            mse = mean_squared_error(y_test, y_pred)
+            rmse = np.sqrt(mse)
+            r2 = r2_score(y_test, y_pred)
+            
+            # Сохраняем модель и результаты
+            self.sliding_window_model = model
+            self.sliding_window_results = {
+                'model': model,
+                'window_size': window_size,
+                'metrics': {
+                    'MAE': mae,
+                    'MSE': mse,
+                    'RMSE': rmse,
+                    'R2': r2
+                },
+                'predictions': y_pred,
+                'actual': y_test,
+                'params': {
+                    'n_estimators': n_estimators,
+                    'max_depth': max_depth,
+                    'learning_rate': learning_rate
+                }
+            }
+            
+            return True, f"XGBoost (sliding window) обучен. Окно: {window_size}, RMSE: {rmse:.2f}, R2: {r2:.2f}"
+        
+        except Exception as e:
+            return False, f"Ошибка обучения XGBoost: {str(e)}"
+
+
+    def plot_sliding_window_results(self):
+        """Визуализация результатов sliding window XGBoost"""
+        if not hasattr(self, 'sliding_window_results'):
+            return False, "Модель sliding window не обучена"
+        
+        try:
+            
+            results = self.sliding_window_results
+            y_test = results['actual']
+            y_pred = results['predictions']
+            window_size = results['window_size']
+            
+            fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+            
+            # График 1: Фактические vs Прогнозные значения
+            
+            axes[0, 0].plot(y_test, label='Скользящее окно', color='blue', alpha=0.7)
+            axes[0, 0].plot(y_pred, label='Прогноз XGBoost', color='red', linestyle='--', alpha=0.7)
+            axes[0, 0].set_title(f'XGBoost прогноз (скользящее окно={window_size})')
+            axes[0, 0].set_xlabel('Индекс тестовой выборки')
+            axes[0, 0].set_ylabel('Значение')
+            axes[0, 0].legend()
+            axes[0, 0].grid(True, alpha=0.3)
+            
+            # График 2: Ошибки прогноза
+            errors = y_test - y_pred
+            axes[0, 1].plot(errors, color='purple', linewidth=1)
+            axes[0, 1].axhline(y=0, color='red', linestyle='--', alpha=0.5)
+            axes[0, 1].fill_between(range(len(errors)), 0, errors, 
+                                where=errors>0, color='green', alpha=0.3, label='Завышение прогноза')
+            axes[0, 1].fill_between(range(len(errors)), 0, errors, 
+                                where=errors<=0, color='red', alpha=0.3, label='Занижение прогноза')
+            axes[0, 1].set_title('Ошибки прогноза')
+            axes[0, 1].set_xlabel('Индекс тестовой выборки')
+            axes[0, 1].set_ylabel('Ошибка')
+            axes[0, 1].legend()
+            axes[0, 1].grid(True, alpha=0.3)
+            
+            # График 3: Распределение ошибок
+            axes[1, 0].hist(errors, bins=30, alpha=0.7, color='orange', edgecolor='black')
+            axes[1, 0].axvline(x=0, color='red', linestyle='--', linewidth=2)
+            axes[1, 0].set_title('Распределение ошибок прогноза')
+            axes[1, 0].set_xlabel('Ошибка')
+            axes[1, 0].set_ylabel('Частота')
+            axes[1, 0].grid(True, alpha=0.3)
+            
+            # График 4: Важность признаков (если доступно)
+            if hasattr(results['model'], 'feature_importances_'):
+                importances = results['model'].feature_importances_
+                feature_indices = range(len(importances))
+                
+                axes[1, 1].bar(feature_indices, importances, color='teal', alpha=0.7)
+                axes[1, 1].set_title(f'Важность признаков (лагов {window_size})')
+                axes[1, 1].set_xlabel('Номер лага')
+                axes[1, 1].set_ylabel('Важность')
+                axes[1, 1].grid(True, alpha=0.3, axis='y')
+            
+            plt.tight_layout()
+            
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=100)
+            buf.seek(0)
+            image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+            buf.close()
+            
+            return True, image_base64
+        
+        except Exception as e:
+            return False, f"Ошибка визуализации: {str(e)}"
+
+
+    def compare_all_models(self):
+        """Сравнение всех моделей, включая sliding window XGBoost"""
+        comparison = {}
+        
+        if 'sarima' in self.results:
+            comparison['SARIMA'] = self.results['sarima']['metrics']
+        
+        if 'regression' in self.results:
+            comparison['Regression'] = self.results['regression']['metrics']
+        
+        if hasattr(self, 'sliding_window_results'):
+            comparison['XGBoost (Sliding Window)'] = self.sliding_window_results['metrics']
+        
+        if not comparison:
+            return False, "Нет обученных моделей для сравнения"
+        
+        # Определяем лучшую модель по RMSE
+        best_model = min(comparison.items(), key=lambda x: x[1]['RMSE'])
+        
+        return True, {
+            'comparison': comparison,
+            'best_model': best_model[0],
+            'best_rmse': best_model[1]['RMSE']
+        }

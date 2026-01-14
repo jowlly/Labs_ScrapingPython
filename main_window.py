@@ -425,6 +425,7 @@ class MainWindow:
             self.analytics_result_text.value = f"Ошибка при анализе скользящим окном: {str(ex)}"
         
         self.page.update()    
+        
     def _create_forecast_tab(self):
         self.forecast_file_path = ft.TextField(
             label="Файл данных для прогнозирования", 
@@ -451,6 +452,12 @@ class MainWindow:
             value="random_forest",
             width=200
         )
+        
+        # Параметры для Sliding Window XGBoost
+        self.window_size_input = ft.TextField(label="Размер окна", value="12", width=100)
+        self.xgb_n_estimators = ft.TextField(label="Количество деревьев", value="100", width=120)
+        self.xgb_max_depth = ft.TextField(label="Глубина деревьев", value="3", width=120)
+        self.xgb_learning_rate = ft.TextField(label="Скорость обучения", value="0.1", width=120)
         
         self.hyperparam_sets = ft.TextField(
             label="Наборы гиперпараметров (JSON)",
@@ -496,14 +503,30 @@ class MainWindow:
             on_click=self.train_regression_model
         )
         
+        # Новые кнопки для Sliding Window XGBoost
+        self.create_sliding_window_btn = ft.ElevatedButton(
+            "Создать sliding window данные",
+            on_click=self.create_sliding_window_data
+        )
+        
+        self.train_sliding_window_xgboost_btn = ft.ElevatedButton(
+            "Обучить XGBoost (sliding window)",
+            on_click=self.train_sliding_window_xgboost
+        )
+        
+        self.plot_sliding_window_results_btn = ft.ElevatedButton(
+            "Визуализировать результаты",
+            on_click=self.plot_sliding_window_results
+        )
+        
         self.tune_hyperparams_btn = ft.ElevatedButton(
             "Настроить гиперпараметры",
             on_click=self.tune_hyperparameters
         )
         
-        self.compare_models_btn = ft.ElevatedButton(
-            "Сравнить модели",
-            on_click=self.compare_models
+        self.compare_all_models_btn = ft.ElevatedButton(
+            "Сравнить все модели",
+            on_click=self.compare_all_models
         )
         
         self.save_model_btn = ft.ElevatedButton(
@@ -524,7 +547,6 @@ class MainWindow:
             on_click=self.make_prediction
         )
         
-        # Контейнер с прокруткой для параметров SARIMA
         sarima_params_container = ft.Container(
             content=ft.Column([
                 ft.Text("SARIMA Параметры:", weight=ft.FontWeight.BOLD, size=16),
@@ -541,7 +563,29 @@ class MainWindow:
             padding=15,
             border=ft.border.all(1, ft.Colors.GREY_300),
             border_radius=10,
-            bgcolor=ft.Colors.GREY_50
+            bgcolor=ft.Colors.BLACK
+        )
+        
+        # Новый контейнер для Sliding Window XGBoost
+        sliding_window_container = ft.Container(
+            content=ft.Column([
+                ft.Text("Эксперимент: Sliding Window XGBoost", weight=ft.FontWeight.BOLD, size=16),
+                ft.Row([
+                    self.window_size_input,
+                    self.xgb_n_estimators,
+                    self.xgb_max_depth,
+                    self.xgb_learning_rate
+                ], wrap=True, spacing=10, run_spacing=10),
+                ft.Row([
+                    self.create_sliding_window_btn,
+                    self.train_sliding_window_xgboost_btn,
+                    self.plot_sliding_window_results_btn
+                ], spacing=10)
+            ], spacing=10),
+            padding=15,
+            border=ft.border.all(1, ft.Colors.BLUE_300),
+            border_radius=10,
+            bgcolor=ft.Colors.BLACK
         )
         
         self.forecast_tab_content = ft.Container(
@@ -567,6 +611,10 @@ class MainWindow:
                 
                 ft.Divider(),
                 
+                sliding_window_container,
+                
+                ft.Divider(),
+                
                 ft.Text("Настройка гиперпараметров:", weight=ft.FontWeight.BOLD, size=16),
                 self.hyperparam_sets,
                 self.tune_hyperparams_btn,
@@ -574,7 +622,7 @@ class MainWindow:
                 ft.Divider(),
                 
                 ft.Row([
-                    self.compare_models_btn,
+                    self.compare_all_models_btn,
                     self.save_model_btn,
                     self.load_model_btn,
                     self.predict_btn
@@ -584,10 +632,10 @@ class MainWindow:
                 self.model_comparison_text,
                 self.forecast_image
                 
-            ], scroll=ft.ScrollMode.AUTO),  # Весь контент вкладки прокручивается
+            ], scroll=ft.ScrollMode.AUTO),
             padding=20
         )
-    
+
     def pick_forecast_file_result(self, e: ft.FilePickerResultEvent):
         if e.files and len(e.files) > 0:
             file_path = e.files[0].path
@@ -876,6 +924,109 @@ class MainWindow:
             f.write(f"Лучшие параметры: {best_params}\n")
             f.write(f"Лучший RMSE: {best_score:.4f}\n")
             f.write("=" * 50 + "\n")
+        
+    def create_sliding_window_data(self, e):
+        """Создание данных для sliding window"""
+        if not self.forecast_file_path.value:
+            self.forecast_result_text.value = "Сначала выберите файл данных"
+            self.page.update()
+            return
+        
+        if self.forecaster.data is None:
+            success, message = self.forecaster.load_data(self.forecast_file_path.value)
+            if not success:
+                self.forecast_result_text.value = message
+                self.page.update()
+                return
+        
+        try:
+            window_size = int(self.window_size_input.value)
+            success, message = self.forecaster.create_sliding_window_features(window_size)
+            self.forecast_result_text.value = message
+        except Exception as ex:
+            self.forecast_result_text.value = f"Ошибка: {str(ex)}"
+        
+        self.page.update()
+
+
+    def train_sliding_window_xgboost(self, e):
+        """Обучение XGBoost на sliding window данных"""
+        try:
+            n_estimators = int(self.xgb_n_estimators.value)
+            max_depth = int(self.xgb_max_depth.value)
+            learning_rate = float(self.xgb_learning_rate.value)
+            
+            success, message = self.forecaster.train_sliding_window_xgboost(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                learning_rate=learning_rate
+            )
+            
+            self.forecast_result_text.value = message
+            
+            if success:
+                # Логируем результаты
+                self._log_sliding_window_results()
+            
+        except Exception as ex:
+            self.forecast_result_text.value = f"Ошибка обучения: {str(ex)}"
+        
+        self.page.update()
+
+
+    def plot_sliding_window_results(self, e):
+        """Визуализация результатов sliding window XGBoost"""
+        success, result = self.forecaster.plot_sliding_window_results()
+        
+        if success:
+            self.forecast_image.src_base64 = result
+            self.forecast_result_text.value = "Результаты sliding window XGBoost визуализированы"
+        else:
+            self.forecast_result_text.value = result
+        
+        self.page.update()
+
+
+    def compare_all_models(self, e):
+        """Сравнение всех моделей"""
+        success, result = self.forecaster.compare_all_models()
+        
+        if success:
+            comparison_text = "СРАВНЕНИЕ ВСЕХ МОДЕЛЕЙ:\n\n"
+            
+            for model_name, metrics in result['comparison'].items():
+                comparison_text += f"{model_name}:\n"
+                for metric, value in metrics.items():
+                    comparison_text += f"  {metric}: {value:.4f}\n"
+                comparison_text += "\n"
+            
+            comparison_text += f"Лучшая модель: {result['best_model']} (RMSE: {result['best_rmse']:.4f})"
+            
+            self.model_comparison_text.value = comparison_text
+        else:
+            self.model_comparison_text.value = result
+        
+        self.page.update()
+
+
+    def _log_sliding_window_results(self):
+        """Логирование результатов sliding window XGBoost"""
+        log_dir = "logs"
+        os.makedirs(log_dir, exist_ok=True)
+        
+        log_file = os.path.join(log_dir, "sliding_window_results.txt")
+        
+        if hasattr(self.forecaster, 'sliding_window_results'):
+            results = self.forecaster.sliding_window_results
+            
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(f"\n=== Sliding Window XGBoost - {datetime.now()} ===\n")
+                f.write(f"Размер окна: {results['window_size']}\n")
+                f.write(f"Параметры модели: {results['params']}\n")
+                f.write("Метрики:\n")
+                for metric, value in results['metrics'].items():
+                    f.write(f"  {metric}: {value}\n")
+                f.write("=" * 50 + "\n")
 
 
 def main(page: ft.Page):
